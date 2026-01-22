@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Manage Admins</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
+        .card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        input, button { width: 100%; padding: 12px; margin-bottom: 10px; box-sizing: border-box; }
+        button { background: #28a745; color: white; border: none; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
+        a { color: #dc3545; text-decoration: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <a href="/admin" style="color:#007bff; margin-bottom: 20px; display:block;">&larr; Back to Dashboard</a>
+
+    <div class="card">
+        <h2>Add New Admin</h2>
+        <form action="/admin/add_user" method="POST">
+            <input type="text" name="username" placeholder="New Username" required>
+            <input type="password" name="password" placeholder="New Password" required>
+            <button type="submit">Create Admin</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Current Admins</h2>
+        <table>
+            <tr><th>Username</th><th>Action</th></tr>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.username }}</td>
+                <td>
+                    {% if session['admin_id'] != user.id %}
+                    <a href="/admin/delete_user/{{ user.id }}" onclick="return confirm('Delete this user?')">Delete</a>
+                    {% else %}
+                    (You)
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+</body>
+</html>
