@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Admin Dashboard</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f4f4; padding: 20px; }
+        .alert { background: #ffeb3b; padding: 10px; margin-bottom: 20px; display: none; border-radius: 5px; cursor: pointer; }
+        .nav { margin-bottom: 20px; }
+        .nav a { margin-right: 15px; text-decoration: none; color: #007bff; font-weight: bold; }
+        .tabs { display: flex; gap: 10px; overflow-x: auto; margin-bottom: 20px; }
+        .tab-btn { padding: 10px; border: none; background: #ddd; cursor: pointer; border-radius: 5px; }
+        .tab-btn.active { background: #007bff; color: white; }
+        .tab-content { display: none; background: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .tab-content.active { display: block; }
+        input, button { width: 100%; padding: 10px; margin-bottom: 10px; box-sizing: border-box; }
+        .btn-primary { background: #007bff; color: white; border: none; }
+        .btn-warning { background: #ffc107; border: none; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; }
+        .modal-box { background: white; padding: 20px; width: 90%; max-width: 400px; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="lowStockAlert" class="alert" onclick="switchTab('low-stock')">
+        ⚠️ Low Stock Alert! Tap to view.
+    </div>
+
+    <div class="nav">
+        <a href="/">Home</a>
+        <a href="/scanner">Scanner</a>
+        <a href="/history">History</a>
+        <a href="/admin/users">Admins</a>
+        <a href="/logout">Logout</a>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('scan')">⚡ Quick Scan</button>
+        <button class="tab-btn" onclick="switchTab('add')">➕ Add Item</button>
+        <button class="tab-btn" onclick="switchTab('list')">📋 List</button>
+        <button class="tab-btn" onclick="switchTab('low-stock')">⚠️ Low Stock</button>
+        <button class="tab-btn" onclick="switchTab('tools')">🔧 Tools</button>
+    </div>
+
+    <div id="scan" class="tab-content active">
+        <h3>Quick Scan (Deduct Stock / Tool Check)</h3>
+        <input type="text" id="scanInput" placeholder="Scan barcode..." autofocus>
+        <p id="scanMsg"></p>
+    </div>
+
+    <div id="add" class="tab-content">
+        <h3>Add New Item</h3>
+        <form id="addForm">
+            <input type="text" name="name" placeholder="Name" required>
+            <input type="text" name="barcode" placeholder="Barcode" required>
+            <input type="number" name="quantity" placeholder="Quantity" required>
+            <input type="text" name="category" placeholder="Category (e.g. Tool)">
+            <input type="number" name="low_stock_threshold" placeholder="Low Stock Limit (Default 10)">
+            <input type="file" name="image">
+            <button type="submit" class="btn-primary">Add Item</button>
+        </form>
+    </div>
+
+    <div id="list" class="tab-content">
+        <h3>Inventory List <button onclick="loadList()" style="width:auto; float:right">Refresh</button></h3>
+        <div style="overflow-x:auto"><table id="listTable"><thead><tr><th>Name</th><th>Qty</th><th>Action</th></tr></thead><tbody></tbody></table></div>
+    </div>
+
+    <div id="low-stock" class="tab-content">
+        <h3>Low Stock Items</h3>
+        <table id="stockTable"><thead><tr><th>Name</th><th>Qty</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div id="tools" class="tab-content">
+        <h3>Tool History</h3>
+        <table id="toolTable"><thead><tr><th>Tool</th><th>User</th><th>Action</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <div id="editModal" class="modal">
+        <div class="modal-box">
+            <h3>Edit Item</h3>
+            <form id="editForm">
+                <input type="hidden" name="item_id" id="eid">
+                <label>Name</label><input type="text" name="name" id="ename">
+                <label>Barcode</label><input type="text" name="barcode" id="ebar">
+                <label>Qty</label><input type="number" name="quantity" id="eqty">
+                <label>Category</label><input type="text" name="category" id="ecat">
+                <label>Low Limit</label><input type="number" name="low_stock_threshold" id="elow">
+                <label>New Image</label><input type="file" name="image">
+                <button type="submit" class="btn-primary">Save Changes</button>
+                <button type="button" onclick="document.getElementById('editModal').style.display='none'" style="background:#ddd; color:black">Cancel</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="toolModal" class="modal">
+        <div class="modal-box">
+            <h3>Tool Check</h3>
+            <p id="toolName"></p>
+            <input type="text" id="toolUser" placeholder="Employee Name">
+            <button onclick="toolAction('checked_out')" class="btn-warning">Check Out</button>
+            <button onclick="toolAction('returned')" class="btn-primary">Return</button>
+            <button onclick="document.getElementById('toolModal').style.display='none'" style="background:#ddd; color:black">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        let currentTool = null;
+
+        function switchTab(id) {
+            document.querySelectorAll('.tab-content').forEach(d => d.style.display='none');
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(id).style.display='block';
+            if(id === 'list') loadList();
+            if(id === 'low-stock') loadStock();
+            if(id === 'tools') loadTools();
+        }
+
+        // --- SCAN LOGIC (FIXED FOR TOOLS) ---
+        document.getElementById('scanInput').addEventListener('change', async function() {
+            const barcode = this.value;
+            if(!barcode) return;
+
+            const res = await fetch(`/api/item/${barcode}`);
+            if(!res.ok) {
+                document.getElementById('scanMsg').innerText = "Item not found";
+                this.value = ''; return;
+            }
+            const item = await res.json();
+
+            // SMART CATEGORY CHECK (Case insensitive)
+            if(item.category && item.category.toLowerCase().includes('tool')) {
+                currentTool = item.barcode;
+                document.getElementById('toolName').innerText = item.name;
+                document.getElementById('toolModal').style.display = 'flex';
+                this.value = '';
+            } else {
+                await fetch('/api/log_usage', {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({barcode: item.barcode, quantity: 1})
+                });
+                document.getElementById('scanMsg').innerText = `Used 1 ${item.name}`;
+                this.value = '';
+            }
+        });
+
+        async function toolAction(action) {
+            const user = document.getElementById('toolUser').value;
+            if(!user) return alert('Enter Name');
+            await fetch('/api/tool_tracking', {
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({barcode: currentTool, employee_name: user, action: action})
+            });
+            alert('Success');
+            document.getElementById('toolModal').style.display='none';
+        }
+
+        // --- EDIT LOGIC (FIXED) ---
+        async function loadList() {
+            const res = await fetch('/api/items');
+            const items = await res.json();
+            const tbody = document.querySelector('#listTable tbody');
+            tbody.innerHTML = '';
+            items.forEach(i => {
+                tbody.innerHTML += `<tr>
+                    <td>${i.name}</td><td>${i.quantity}</td>
+                    <td><button onclick='editItem(${JSON.stringify(i)})'>Edit</button></td>
+                </tr>`;
+            });
+        }
+
+        function editItem(i) {
+            document.getElementById('eid').value = i.id;
+            document.getElementById('ename').value = i.name;
+            document.getElementById('ebar').value = i.barcode;
+            document.getElementById('eqty').value = i.quantity;
+            document.getElementById('ecat').value = i.category;
+            document.getElementById('elow').value = i.low_stock_threshold;
+            document.getElementById('editModal').style.display='flex';
+        }
+
+        document.getElementById('editForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const fd = new FormData(this);
+            const res = await fetch('/api/update_item', {method:'POST', body:fd});
+            if(res.ok) { alert('Saved!'); document.getElementById('editModal').style.display='none'; loadList(); }
+            else { alert('Error saving'); }
+        });
+
+        // --- OTHER LOADS ---
+        async function loadStock() {
+            const res = await fetch('/api/low_stock_alerts');
+            const items = await res.json();
+            const tbody = document.querySelector('#stockTable tbody');
+            tbody.innerHTML = '';
+            if(items.length > 0) document.getElementById('lowStockAlert').style.display='block';
+            items.forEach(i => tbody.innerHTML += `<tr><td>${i.name}</td><td>${i.quantity}</td></tr>`);
+        }
+
+        async function loadTools() {
+            const res = await fetch('/api/tool_tracking');
+            const logs = await res.json();
+            document.querySelector('#toolTable tbody').innerHTML = logs.map(l =>
+                `<tr><td>${l.item_name}</td><td>${l.employee_name}</td><td>${l.action}</td></tr>`
+            ).join('');
+        }
+
+        document.addEventListener('DOMContentLoaded', loadStock);
+
+        // ADD FORM
+        document.getElementById('addForm').addEventListener('submit', async function(e){
+            e.preventDefault();
+            const fd = new FormData(this);
+            const res = await fetch('/api/item', {method:'POST', body:fd});
+            if(res.ok) { alert('Added'); this.reset(); }
+        });
+    </script>
+</body>
+</html>
